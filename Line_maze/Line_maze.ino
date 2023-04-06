@@ -22,11 +22,12 @@
 
 // motor pins (for the motor driver)
 #define  leftMotorSpeedPin 6
-#define  leftMotorDirectionPin1  7
-#define  leftMotorDirectionPin2  8
-#define rightMotorSpeedPin 9
-#define rightMotorDirectionPin1 10
-#define rightMotorDirectionPin2 11
+#define  leftMotorDirectionPin1  8
+#define  leftMotorDirectionPin2  7
+#define rightMotorSpeedPin 11
+#define rightMotorDirectionPin1 12
+#define rightMotorDirectionPin2 10
+#define standBy 9
 
 // pin for changing robot state
 #define robotStatePin 12
@@ -42,7 +43,7 @@
 QTRSensors lineSensors;
 const uint8_t lineSensorCount = 8;
 uint16_t lineSensorValues[lineSensorCount];
-uint16_t linePosition;
+int16_t linePosition;
 
 // line sensors lower limit (between 0 and 1023)
 const uint16_t lineSensorLowerThreshold = 100;
@@ -51,9 +52,14 @@ const uint16_t lineSensorLowerThreshold = 100;
 uint8_t robotState = testingState;
 
 // PID constants
-const double kP = 0.01;
-const double kI = 0;
-const double kD = 0;
+const double kP = 150.0 / 10000;
+const double kI =   0.0 / 10000;
+const double kD =   0.0 / 10000;
+// to be tuned
+// measuring distance by time until we implement encoders
+const int intersectionDelayMilis = 30;
+const int leftTurnDelay = 270;
+const int rightTurnDelay = 270;
 
 // PID
 // correction will be positive if the robot needs to turn left
@@ -87,6 +93,8 @@ void calculatePID();
 void setMotorSpeed(L298N&, int16_t);
 void setLeftMotorSpeed(int16_t);
 void setRightMotorSpeed(int16_t);
+void vireazaStanga();
+void vireazaDreapta();
 
 void setup() {
   // put your setup code here, to run once:
@@ -94,6 +102,8 @@ void setup() {
   Serial.begin(9600);
 
   // initialize motor speeds
+  pinMode(standBy, OUTPUT);
+  digitalWrite(standBy, HIGH);
    leftMotor.setSpeed(0);
   rightMotor.setSpeed(0);
    leftMotor.forward();
@@ -131,6 +141,7 @@ void loop() {
       doLineFollow();
       break;
   }
+  // delay(0);
 }
 
 void configureLineSensors() {
@@ -145,7 +156,7 @@ void configureLineSensors() {
   // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors
   // * 10 reads per calibrate() call = ~24 ms per calibrate() call.
   // Call calibrate() 400 times to make calibration take about 10 seconds.
-  for (uint16_t i = 0; i < 400; i++)
+  for (uint16_t i = 0; i < 150; i++)
   {
     lineSensors.calibrate();
   }
@@ -171,7 +182,7 @@ void configureLineSensors() {
 }
 
 void displayLineSensorValues() {
-  lineSensors.read(lineSensorValues);
+  lineSensors.readCalibrated(lineSensorValues);
 
   // print the sensor values as numbers from 0 to 1000, where 0 means maximum
   // reflectance and 1000 means minimum reflectance, followed by the line position
@@ -182,7 +193,7 @@ void displayLineSensorValues() {
   }
   
   Serial.println();
-  delay(250);
+  // delay(0);
 }
 
 void autoSensorCalibration() {
@@ -197,6 +208,16 @@ void doMazeExploration() {
   readLinePosition();
   Serial.print(linePosition);
   Serial.println();
+  
+  calculatePID();
+
+  // calculate new speeds based on correction (WIP)
+   leftSpeed = 150 - correction;
+  rightSpeed = 150 + correction;
+
+  // set new motor speeds
+  setLeftMotorSpeed(leftSpeed);
+  setRightMotorSpeed(rightSpeed);
 }
 
 void doMazeRun() {
@@ -205,11 +226,17 @@ void doMazeRun() {
 
 void doLineFollow() {
   readLinePosition();
+  displayLineSensorValues();
   calculatePID();
 
   // calculate new speeds based on correction (WIP)
    leftSpeed = 100 - correction;
   rightSpeed = 100 + correction;
+
+  Serial.print(leftSpeed);
+  Serial.print("\t");
+  Serial.print(rightSpeed);
+  Serial.println();
 
   // set new motor speeds
   setLeftMotorSpeed(leftSpeed);
@@ -219,7 +246,7 @@ void doLineFollow() {
 void readLinePosition() {
   static int32_t sum, pondSum;
 
-  lineSensors.read(lineSensorValues);
+  lineSensors.readCalibrated(lineSensorValues);
   
   // ignore values below threshold
   for (uint8_t i = 0; i < lineSensorCount; i++) {
@@ -231,7 +258,11 @@ void readLinePosition() {
   sum = pondSum = 0;
   for (uint8_t i = 0; i < lineSensorCount; i++) {
     sum += lineSensorValues[i];
-    pondSum += lineSensorValues[i] * 1000 * i;
+    pondSum += (int32_t)lineSensorValues[i] * 1000 * i;
+  }
+
+  if (sum == 0) {
+    return;
   }
   linePosition = pondSum / sum;
   
@@ -242,16 +273,16 @@ void readLinePosition() {
   linePosition -= 500 * (lineSensorCount - 1);
 
   // for debugging
-  Serial.print("pondSum is ");
-  Serial.print(pondSum);
-  Serial.print(" and sum is ");
-  Serial.print(sum);
-  Serial.print(". linePosition should be ");
-  Serial.print(pondSum / sum);
-  Serial.println();
-  Serial.print("Line position is ");
-  Serial.print(linePosition);
-  Serial.println();
+  // Serial.print("pondSum is ");
+  // Serial.print(pondSum);
+  // Serial.print(" and sum is ");
+  // Serial.print(sum);
+  // Serial.print(". linePosition should be ");
+  // Serial.print(pondSum / sum);
+  // Serial.println();
+  // Serial.print("Line position is ");
+  // Serial.print(linePosition);
+  // Serial.println();
 }
 
 void calculatePID() {
@@ -298,4 +329,22 @@ void setLeftMotorSpeed(int16_t newSpeed) {
 
 void setRightMotorSpeed(int16_t newSpeed) {
   setMotorSpeed(rightMotor, newSpeed);
+}
+
+void vireazaStanga() {
+  setLeftMotorSpeed(-100);
+  setRightMotorSpeed(100);
+  delay(leftTurnDelay);
+  setLeftMotorSpeed(0);
+  setRightMotorSpeed(0);
+  
+}
+
+void vireazaDreapta() {
+  setLeftMotorSpeed(100);
+  setRightMotorSpeed(-100);
+  delay(rightTurnDelay);
+  setLeftMotorSpeed(0);
+  setRightMotorSpeed(0);
+  
 }
