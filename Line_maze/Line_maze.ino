@@ -72,7 +72,9 @@ int64_t lastTime;
 int64_t microsecondsElapsed;
 
 // maze
-uint8_t intersections[101];
+uint8_t intersections[256];
+uint8_t intersectionCount;
+bool leftTheLine;
 
 // define motors
 L298N leftMotor ( leftMotorSpeedPin,  leftMotorDirectionPin1,  leftMotorDirectionPin2);
@@ -208,6 +210,14 @@ void doTesting() {
 void doMazeExploration() {
   readLinePosition();
   displayLineSensorValues();
+
+  if (leftTheLine) {
+    intersectionCount--;
+    turnLeft();
+    turnLeft();
+    return;
+  }
+
   calculatePID();
 
   // calculate new speeds based on correction (WIP)
@@ -218,18 +228,24 @@ void doMazeExploration() {
   setLeftMotorSpeed(leftSpeed);
   setRightMotorSpeed(rightSpeed);
 
-  if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] > 500) {
+  if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 600) {
+    intersectionCount++;
     delay(checkIntersectionDelay);
-    if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] > 1200) {
+
+    if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 1200) {
+      // finished the maze
       delay(100000);
     }
     else if (lineSensorValues[0] > 500) {
+      intersections[intersectionCount] += intersectionLeft;
       turnLeft();
     }
-    else if (lineSensorValues[lineSensorCount / 2 - 1] + lineSensorValues[lineSensorCount / 2] > 1200) {
+    else if (lineSensorValues[lineSensorCount / 2 - 1] + lineSensorValues[lineSensorCount / 2] >= 1200) {
+      intersections[intersectionCount] += intersectionForward;
       return;
     }
     else {
+      intersections[intersectionCount] += intersectionRight;
       turnRight();
     }
   }
@@ -277,8 +293,10 @@ void readLinePosition() {
   }
 
   if (sum == 0) {
+    leftTheLine = true;
     return;
   }
+  leftTheLine = false;
   linePosition = pondSum / sum;
   
   // normalize line position (mid value becomes 0)
