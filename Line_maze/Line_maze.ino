@@ -337,7 +337,6 @@ void vireazaStanga() {
   delay(leftTurnDelay);
   setLeftMotorSpeed(0);
   setRightMotorSpeed(0);
-  
 }
 
 void vireazaDreapta() {
@@ -346,5 +345,4 @@ void vireazaDreapta() {
   delay(rightTurnDelay);
   setLeftMotorSpeed(0);
   setRightMotorSpeed(0);
-  
 }
