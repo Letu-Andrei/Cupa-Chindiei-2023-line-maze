@@ -57,7 +57,7 @@ const double kI =   0.0 / 10000;
 const double kD =   0.0 / 10000;
 // to be tuned
 // measuring distance by time until we implement encoders
-const int intersectionDelayMilis = 30;
+const int checkIntersectionDelay = 50;
 const int leftTurnDelay = 270;
 const int rightTurnDelay = 270;
 
@@ -80,6 +80,7 @@ L298N rightMotor(rightMotorSpeedPin, rightMotorDirectionPin1, rightMotorDirectio
 int16_t  leftSpeed;
 int16_t rightSpeed;
 int16_t maxSpeed = 255;
+const int16_t baseSpeed = 100;
 
 void configureLineSensors();
 void displayLineSensorValues();
@@ -93,8 +94,8 @@ void calculatePID();
 void setMotorSpeed(L298N&, int16_t);
 void setLeftMotorSpeed(int16_t);
 void setRightMotorSpeed(int16_t);
-void vireazaStanga();
-void vireazaDreapta();
+void turnLeft();
+void turnRight();
 
 void setup() {
   // put your setup code here, to run once:
@@ -206,18 +207,32 @@ void doTesting() {
 
 void doMazeExploration() {
   readLinePosition();
-  Serial.print(linePosition);
-  Serial.println();
-  
+  displayLineSensorValues();
   calculatePID();
 
   // calculate new speeds based on correction (WIP)
-   leftSpeed = 150 - correction;
-  rightSpeed = 150 + correction;
+   leftSpeed = baseSpeed - correction;
+  rightSpeed = baseSpeed + correction;
 
   // set new motor speeds
   setLeftMotorSpeed(leftSpeed);
   setRightMotorSpeed(rightSpeed);
+
+  if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] > 500) {
+    delay(checkIntersectionDelay);
+    if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] > 1200) {
+      delay(100000);
+    }
+    else if (lineSensorValues[0] > 500) {
+      turnLeft();
+    }
+    else if (lineSensorValues[lineSensorCount / 2 - 1] + lineSensorValues[lineSensorCount / 2] > 1200) {
+      return;
+    }
+    else {
+      turnRight();
+    }
+  }
 }
 
 void doMazeRun() {
@@ -230,8 +245,8 @@ void doLineFollow() {
   calculatePID();
 
   // calculate new speeds based on correction (WIP)
-   leftSpeed = 100 - correction;
-  rightSpeed = 100 + correction;
+   leftSpeed = baseSpeed - correction;
+  rightSpeed = baseSpeed + correction;
 
   Serial.print(leftSpeed);
   Serial.print("\t");
@@ -331,7 +346,10 @@ void setRightMotorSpeed(int16_t newSpeed) {
   setMotorSpeed(rightMotor, newSpeed);
 }
 
-void vireazaStanga() {
+void turnLeft() {
+  setLeftMotorSpeed(0);
+  setRightMotorSpeed(0);
+  delay(100);
   setLeftMotorSpeed(-100);
   setRightMotorSpeed(100);
   delay(leftTurnDelay);
@@ -339,7 +357,10 @@ void vireazaStanga() {
   setRightMotorSpeed(0);
 }
 
-void vireazaDreapta() {
+void turnRight() {
+  setLeftMotorSpeed(0);
+  setRightMotorSpeed(0);
+  delay(100);
   setLeftMotorSpeed(100);
   setRightMotorSpeed(-100);
   delay(rightTurnDelay);
