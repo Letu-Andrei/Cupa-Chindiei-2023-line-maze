@@ -58,8 +58,8 @@ const double kD = 300.0 * 10;
 // to be tuned
 // measuring distance by time until we implement encoders
 const int checkIntersectionDelay = 50;
-const int leftTurnDelay = 270;
-const int rightTurnDelay = 270;
+const int  leftTurnDelay = 1000;
+const int rightTurnDelay = leftTurnDelay;
 
 // PID
 // correction will be positive if the robot needs to turn left
@@ -87,9 +87,9 @@ int16_t rightSpeed;
 int16_t maxSpeed = 255;
 const int16_t baseSpeed = 100;
 
-void configureLineSensors();
+void calibrateLineSensors();
+void autoCalibrateLineSensors();
 void displayLineSensorValues();
-void autoSensorCalibration();
 void doTesting();
 void doMazeExploration();
 void doMazeRun();
@@ -110,15 +110,14 @@ void setup() {
   // initialize motor speeds
   pinMode(standBy, OUTPUT);
   digitalWrite(standBy, HIGH);
-   leftMotor.setSpeed(0);
-  rightMotor.setSpeed(0);
-   leftMotor.forward();
-  rightMotor.forward();
+   leftMotor.stop();
+  rightMotor.stop();
 
   // configure line sensors
-  configureLineSensors();
-  // automatization TBD
-  // autoSensorCalibration();
+  lineSensors.setTypeAnalog();
+  lineSensors.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5, A6, A7}, lineSensorCount);
+  // calibrateLineSensors();
+  autoCalibrateLineSensors();
 
   // initialize robot in line follow state
   robotState = mazeExplorationState;
@@ -151,23 +150,56 @@ void loop() {
   // delay(0);
 }
 
-void configureLineSensors() {
-  // configure the sensors
-  lineSensors.setTypeAnalog();
-  lineSensors.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5, A6, A7}, lineSensorCount);
-  
+void calibrateLineSensors() {  
   delay(500);
-  digitalWrite(LED_BUILTIN, HIGH); // turn on Arduino's LED to indicate we are in calibration mode
+  digitalWrite(LED_BUILTIN, HIGH);
 
-  // analogRead() takes about 0.1 ms on an AVR.
-  // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors
-  // * 10 reads per calibrate() call = ~24 ms per calibrate() call.
-  // Call calibrate() 400 times to make calibration take about 10 seconds.
-  for (uint16_t i = 0; i < 150; i++)
+  for (uint16_t i = 0; i < 400; i++)
   {
     lineSensors.calibrate();
   }
-  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
+  digitalWrite(LED_BUILTIN, LOW);
+  
+  // print the calibration minimum values measured when emitters were on
+  for (uint8_t i = 0; i < lineSensorCount; i++)
+  {
+    Serial.print(lineSensors.calibrationOn.minimum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+
+  // print the calibration maximum values measured when emitters were on
+  for (uint8_t i = 0; i < lineSensorCount; i++)
+  {
+    Serial.print(lineSensors.calibrationOn.maximum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+  Serial.println();
+  delay(1000);
+}
+
+void autoCalibrateLineSensors() {
+  delay(5000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  
+  setLeftMotorSpeed(50);
+  setRightMotorSpeed(-50);
+  for (uint16_t i = 0; i < 200; i++)
+  {
+    lineSensors.calibrate();
+  }
+
+  setLeftMotorSpeed(-50);
+  setRightMotorSpeed(50);
+  for (uint16_t i = 0; i < 200; i++)
+  {
+    lineSensors.calibrate();
+  }
+  leftMotor.stop();
+  rightMotor.stop();
+
+  digitalWrite(LED_BUILTIN, LOW);
   
   // print the calibration minimum values measured when emitters were on
   for (uint8_t i = 0; i < lineSensorCount; i++)
@@ -203,12 +235,14 @@ void displayLineSensorValues() {
   // delay(0);
 }
 
-void autoSensorCalibration() {
-  // TBD
-}
-
 void doTesting() {
-  displayLineSensorValues();
+  // displayLineSensorValues();
+  digitalWrite(LED_BUILTIN, HIGH);
+  turnLeft();
+  // setLeftMotorSpeed(100);
+  // setRightMotorSpeed(-100);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);  
 }
 
 void doMazeExploration() {
@@ -216,7 +250,7 @@ void doMazeExploration() {
   displayLineSensorValues();
 
   if (leftTheLine) {
-    intersectionCount--;
+    // intersectionCount--;
     turnLeft();
     turnLeft();
     return;
@@ -233,7 +267,7 @@ void doMazeExploration() {
   setRightMotorSpeed(rightSpeed);
 
   if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 600) {
-    intersectionCount++;
+    // intersectionCount++;
     canTurnLeft = lineSensorValues[0] > 500;
     delay(checkIntersectionDelay);
 
@@ -352,14 +386,17 @@ void calculatePID() {
 void setMotorSpeed(L298N& motor, int16_t newSpeed) {
   newSpeed = constrain(newSpeed, -255, 255);
   
-  if (newSpeed > 0) {
-    motor.forward();
+  if (newSpeed == 0) {
+    motor.stop();
+  }
+  else if (newSpeed > 0) {
     motor.setSpeed(newSpeed);
+    motor.forward();
   }
   else {
-    motor.backward();
     newSpeed = -newSpeed;
     motor.setSpeed(newSpeed);
+    motor.backward();
   }
 }
 
@@ -372,23 +409,23 @@ void setRightMotorSpeed(int16_t newSpeed) {
 }
 
 void turnLeft() {
-  setLeftMotorSpeed(0);
-  setRightMotorSpeed(0);
+  leftMotor.stop();
+  rightMotor.stop();
   delay(100);
-  setLeftMotorSpeed(-100);
-  setRightMotorSpeed(100);
-  delay(leftTurnDelay);
-  setLeftMotorSpeed(0);
-  setRightMotorSpeed(0);
+  leftMotor.reset();
+  leftMotor.runFor(leftTurnDelay, 1);
+  rightMotor.reset();
+  rightMotor.runFor(leftTurnDelay, 0);
+  delay(100);
 }
 
 void turnRight() {
-  setLeftMotorSpeed(0);
-  setRightMotorSpeed(0);
+  leftMotor.stop();
+  rightMotor.stop();
   delay(100);
-  setLeftMotorSpeed(100);
-  setRightMotorSpeed(-100);
-  delay(rightTurnDelay);
-  setLeftMotorSpeed(0);
-  setRightMotorSpeed(0);
+  leftMotor.reset();
+  leftMotor.runFor(rightTurnDelay, 0);
+  rightMotor.reset();
+  rightMotor.runFor(rightTurnDelay, 1);
+  delay(100);
 }
