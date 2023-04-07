@@ -76,6 +76,8 @@ const int32_t maxTimeDifMicros = 200000;
 uint8_t intersections[256];
 uint8_t intersectionCount;
 bool leftTheLine;
+bool canTurnLeft;
+bool canTurnRight;
 
 // define motors
 L298N leftMotor ( leftMotorSpeedPin,  leftMotorDirectionPin1,  leftMotorDirectionPin2);
@@ -119,10 +121,11 @@ void setup() {
   // autoSensorCalibration();
 
   // initialize robot in line follow state
-  robotState = lineFollowState;
+  robotState = mazeExplorationState;
 
   // initialize intersections[0] with a non-0 value to prevent index from going below 1 when shortening path
   intersections[0] = intersectionForward;
+  intersectionCount = 1;
 
   // initialize PID timer
   lastTime = micros();
@@ -231,13 +234,14 @@ void doMazeExploration() {
 
   if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 600) {
     intersectionCount++;
+    canTurnLeft = lineSensorValues[0] > 500;
     delay(checkIntersectionDelay);
 
     if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 1200) {
       // finished the maze
       delay(100000);
     }
-    else if (lineSensorValues[0] > 500) {
+    else if (canTurnLeft) {
       intersections[intersectionCount] += intersectionLeft;
       turnLeft();
     }
