@@ -52,9 +52,9 @@ const uint16_t lineSensorLowerThreshold = 100;
 uint8_t robotState = testingState;
 
 // PID constants
-const double kP = 150.0 / 10000;
-const double kI =   0.0 / 10000;
-const double kD =   0.0 / 10000;
+const double kP = 100.0 / 10000;
+const double kI =   0.0 / 500000000;
+const double kD = 300.0 * 10;
 // to be tuned
 // measuring distance by time until we implement encoders
 const int checkIntersectionDelay = 50;
@@ -70,6 +70,7 @@ int16_t correction;
 int64_t timeNow;
 int64_t lastTime;
 int64_t microsecondsElapsed;
+const int32_t maxTimeDifMicros = 200000;
 
 // maze
 uint8_t intersections[256];
@@ -320,7 +321,7 @@ void readLinePosition() {
 
 void calculatePID() {
   timeNow = micros();
-  microsecondsElapsed = lastTime - timeNow;
+  microsecondsElapsed = timeNow - lastTime;
   
   if (microsecondsElapsed == 0) {
     return;
@@ -334,11 +335,13 @@ void calculatePID() {
 
   // integral
   errorSum += error * microsecondsElapsed;
-  correction += kI * errorSum / timeNow;
+  errorSum = constrain(errorSum, maxTimeDifMicros * (-3500), maxTimeDifMicros * 3500);
+  correction += kI * errorSum;
 
   // derivative  
-  correction += kD * error / microsecondsElapsed;
+  correction += kD * (error - lastError) / microsecondsElapsed;
 
+  lastError = error;
   lastTime = timeNow;
 }
 
