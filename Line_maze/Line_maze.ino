@@ -52,8 +52,8 @@ const uint16_t lineSensorLowerThreshold = 100;
 uint8_t robotState = testingState;
 
 // PID constants
-const double kP = 100.0 / 10000;
-const double kI =   0.0 / 500000000;
+const double kP = 120.0 / 10000;
+const double kI =   5.0 / 500000000;
 const double kD = 300.0 * 10;
 // to be tuned
 // measuring distance by time until we implement encoders
@@ -70,7 +70,7 @@ int16_t correction;
 int64_t timeNow;
 int64_t lastTime;
 int64_t microsecondsElapsed;
-const int32_t maxTimeDifMicros = 200000;
+const int32_t maxTimeDifMicros = 1000000;
 
 // maze
 uint8_t intersections[256];
@@ -116,11 +116,15 @@ void setup() {
   // configure line sensors
   lineSensors.setTypeAnalog();
   lineSensors.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5, A6, A7}, lineSensorCount);
-  // calibrateLineSensors();
-  autoCalibrateLineSensors();
+  // calibrate line sensors
+  calibrateLineSensors();
+  // auto calibration seems buggy
+  // autoCalibrateLineSensors();
 
   // initialize robot in line follow state
-  robotState = mazeExplorationState;
+  // robotState = testingState;
+  // robotState = mazeExplorationState;
+  robotState = lineFollowState;
 
   // initialize intersections[0] with a non-0 value to prevent index from going below 1 when shortening path
   intersections[0] = intersectionForward;
