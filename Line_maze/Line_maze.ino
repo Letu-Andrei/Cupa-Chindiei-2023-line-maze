@@ -53,7 +53,7 @@ uint8_t robotState = testingState;
 
 // PID constants
 const double kP = 120.0 / 10000;
-const double kI =   5.0 / 500000000;
+const double kI =   0.0 / 500000000;
 const double kD = 300.0 * 10;
 // to be tuned
 // measuring distance by time until we implement encoders
@@ -62,6 +62,7 @@ const uint16_t preTurnDelay = 250;
 const uint16_t  leftTurnDelay = 500;
 const uint16_t rightTurnDelay = leftTurnDelay;
 const uint16_t turnAngle = 160;
+const uint16_t turnAngle180 = 330;
 
 // PID
 // correction will be positive if the robot needs to turn left
@@ -110,6 +111,7 @@ void setLeftMotorSpeed(int16_t);
 void setRightMotorSpeed(int16_t);
 void turnLeft();
 void turnRight();
+void turn180();
 void leftEncoderChange();
 void rightEncoderChange();
 
@@ -274,9 +276,7 @@ void doMazeExploration() {
     leftMotor.stop();
     rightMotor.stop();
     delay(250);
-    turnLeft();
-    delay(250);
-    turnLeft();
+    turn180();
     return;
   }
 
@@ -330,6 +330,7 @@ void doMazeExploration() {
     }
   }  
 
+  readLinePosition();
   calculatePID();
 
   // calculate new speeds based on correction (WIP)
@@ -529,6 +530,23 @@ void turnRight() {
   // rightMotor.stop();
   
   // delay(250);
+}
+
+void turn180() {
+  Serial.print("Turning 180");
+  Serial.println();
+  previousLeftEncoder = leftEncoder;
+  previousRightEncoder = rightEncoder;
+  while (leftEncoder - previousLeftEncoder > -turnAngle180 || rightEncoder - previousRightEncoder < turnAngle180) {
+    Serial.print("Turning 180");
+    Serial.println();
+     leftMotor.setSpeed(100);
+     leftMotor.backward();
+    rightMotor.setSpeed(100);
+    rightMotor.forward();
+  }
+   leftMotor.stop();
+  rightMotor.stop();
 }
 
 void leftEncoderChange() {
