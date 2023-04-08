@@ -30,7 +30,7 @@
 #define standBy 9
 
 // pin for changing robot state
-#define robotStatePin 12
+// #define robotStatePin 12
 // pin for saving maze to board memory (TBD)
 #define saveMazePin 13
 
@@ -57,9 +57,11 @@ const double kI =   5.0 / 500000000;
 const double kD = 300.0 * 10;
 // to be tuned
 // measuring distance by time until we implement encoders
-const int checkIntersectionDelay = 50;
-const int  leftTurnDelay = 1000;
-const int rightTurnDelay = leftTurnDelay;
+const uint16_t checkIntersectionDelay = 100;
+const uint16_t preTurnDelay = 250;
+const uint16_t  leftTurnDelay = 500;
+const uint16_t rightTurnDelay = leftTurnDelay;
+const uint16_t turnAngle = 160;
 
 // PID
 // correction will be positive if the robot needs to turn left
@@ -86,6 +88,13 @@ int16_t  leftSpeed;
 int16_t rightSpeed;
 int16_t maxSpeed = 255;
 const int16_t baseSpeed = 100;
+const int16_t turnSpeed = 100;
+
+// encoders
+int32_t  leftEncoder;
+int32_t rightEncoder;
+int32_t previousLeftEncoder;
+int32_t previousRightEncoder;
 
 void calibrateLineSensors();
 void autoCalibrateLineSensors();
@@ -101,6 +110,8 @@ void setLeftMotorSpeed(int16_t);
 void setRightMotorSpeed(int16_t);
 void turnLeft();
 void turnRight();
+void leftEncoderChange();
+void rightEncoderChange();
 
 void setup() {
   // put your setup code here, to run once:
@@ -113,6 +124,13 @@ void setup() {
    leftMotor.stop();
   rightMotor.stop();
 
+  // set encoder pins to input
+  pinMode(4, INPUT);
+  pinMode(5, INPUT);
+  // attach encoder functions
+  attachInterrupt(digitalPinToInterrupt(2), leftEncoderChange, RISING);
+  attachInterrupt(digitalPinToInterrupt(3), rightEncoderChange, RISING);
+
   // configure line sensors
   lineSensors.setTypeAnalog();
   lineSensors.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5, A6, A7}, lineSensorCount);
@@ -123,8 +141,8 @@ void setup() {
 
   // initialize robot in line follow state
   // robotState = testingState;
-  // robotState = mazeExplorationState;
-  robotState = lineFollowState;
+  robotState = mazeExplorationState;
+  // robotState = lineFollowState;
 
   // initialize intersections[0] with a non-0 value to prevent index from going below 1 when shortening path
   intersections[0] = intersectionForward;
@@ -133,6 +151,7 @@ void setup() {
   // initialize PID timer
   lastTime = micros();
 
+  // Serial.print("test");
 }
 
 void loop() {
@@ -158,7 +177,7 @@ void calibrateLineSensors() {
   delay(500);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  for (uint16_t i = 0; i < 400; i++)
+  for (uint16_t i = 0; i < 200; i++)
   {
     lineSensors.calibrate();
   }
@@ -189,14 +208,14 @@ void autoCalibrateLineSensors() {
   
   setLeftMotorSpeed(50);
   setRightMotorSpeed(-50);
-  for (uint16_t i = 0; i < 200; i++)
+  for (uint16_t i = 0; i < 100; i++)
   {
     lineSensors.calibrate();
   }
 
   setLeftMotorSpeed(-50);
   setRightMotorSpeed(50);
-  for (uint16_t i = 0; i < 200; i++)
+  for (uint16_t i = 0; i < 100; i++)
   {
     lineSensors.calibrate();
   }
@@ -240,13 +259,10 @@ void displayLineSensorValues() {
 }
 
 void doTesting() {
-  // displayLineSensorValues();
-  digitalWrite(LED_BUILTIN, HIGH);
-  turnLeft();
-  // setLeftMotorSpeed(100);
-  // setRightMotorSpeed(-100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(1000);  
+  Serial.print(leftEncoder);
+  Serial.print('\t');
+  Serial.print(rightEncoder);
+  Serial.println();
 }
 
 void doMazeExploration() {
@@ -255,10 +271,64 @@ void doMazeExploration() {
 
   if (leftTheLine) {
     // intersectionCount--;
+    leftMotor.stop();
+    rightMotor.stop();
+    delay(250);
     turnLeft();
+    delay(250);
     turnLeft();
     return;
   }
+
+   canTurnLeft = lineSensorValues[0]                   > 500;
+  canTurnRight = lineSensorValues[lineSensorCount - 1] > 500;
+
+  if (canTurnLeft || canTurnRight) {
+    // intersectionCount++;
+    // delay(checkIntersectionDelay);
+     previousLeftEncoder =  leftEncoder;
+    previousRightEncoder = rightEncoder;
+     leftMotor.stop();
+    rightMotor.stop();
+    while (leftEncoder - previousLeftEncoder < 80 || rightEncoder - previousRightEncoder < 80) {
+      Serial.print("Going Forward");
+      Serial.println();      
+      leftMotor.setSpeed(100);
+      leftMotor.forward();
+      rightMotor.setSpeed(100);
+      rightMotor.forward();
+    }
+    leftMotor.stop();
+    rightMotor.stop();
+
+    readLinePosition();
+
+    if ((lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] > 1200) && canTurnLeft && canTurnRight) {
+      // finished the maze
+      leftMotor.stop();
+      rightMotor.stop();
+      delay(100000);
+    }
+    else if (canTurnLeft) {
+      intersections[intersectionCount] += intersectionLeft;
+      delay(preTurnDelay);
+      turnLeft();
+      return;
+    }
+    else if (lineSensorValues[lineSensorCount / 2 - 2] + 
+             lineSensorValues[lineSensorCount / 2 - 1] + 
+             lineSensorValues[lineSensorCount / 2] + 
+             lineSensorValues[lineSensorCount / 2 + 1] > 800) {
+      intersections[intersectionCount] += intersectionForward;
+      return;
+    }
+    else {
+      intersections[intersectionCount] += intersectionRight;
+      delay(preTurnDelay);
+      turnRight();
+      return;
+    }
+  }  
 
   calculatePID();
 
@@ -269,29 +339,6 @@ void doMazeExploration() {
   // set new motor speeds
   setLeftMotorSpeed(leftSpeed);
   setRightMotorSpeed(rightSpeed);
-
-  if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 600) {
-    // intersectionCount++;
-    canTurnLeft = lineSensorValues[0] > 500;
-    delay(checkIntersectionDelay);
-
-    if (lineSensorValues[0] + lineSensorValues[lineSensorCount - 1] >= 1200) {
-      // finished the maze
-      delay(100000);
-    }
-    else if (canTurnLeft) {
-      intersections[intersectionCount] += intersectionLeft;
-      turnLeft();
-    }
-    else if (lineSensorValues[lineSensorCount / 2 - 1] + lineSensorValues[lineSensorCount / 2] >= 1200) {
-      intersections[intersectionCount] += intersectionForward;
-      return;
-    }
-    else {
-      intersections[intersectionCount] += intersectionRight;
-      turnRight();
-    }
-  }
 }
 
 void doMazeRun() {
@@ -413,23 +460,91 @@ void setRightMotorSpeed(int16_t newSpeed) {
 }
 
 void turnLeft() {
-  leftMotor.stop();
+  Serial.print("Turning left");
+  Serial.println();
+  previousLeftEncoder = leftEncoder;
+  previousRightEncoder = rightEncoder;
+  while (leftEncoder - previousLeftEncoder > -turnAngle || rightEncoder - previousRightEncoder < turnAngle) {
+    Serial.print("Turning left");
+    Serial.println();
+     leftMotor.setSpeed(100);
+     leftMotor.backward();
+    rightMotor.setSpeed(100);
+    rightMotor.forward();
+  }
+   leftMotor.stop();
   rightMotor.stop();
-  delay(100);
-  leftMotor.reset();
-  leftMotor.runFor(leftTurnDelay, 1);
-  rightMotor.reset();
-  rightMotor.runFor(leftTurnDelay, 0);
-  delay(100);
+  // leftMotor.stop();
+  // rightMotor.stop();
+
+  // delay(250);
+  
+  // leftMotor.reset();
+  // leftMotor.setSpeed(turnSpeed);
+  // leftMotor.backward();
+  
+  // rightMotor.reset();
+  // rightMotor.setSpeed(turnSpeed);
+  // rightMotor.forward();
+
+  // delay(leftTurnDelay);
+  
+  // leftMotor.stop();
+  // rightMotor.stop();
+  
+  // delay(250);
 }
 
 void turnRight() {
-  leftMotor.stop();
+  Serial.print("Turning right");
+  Serial.println();
+  previousLeftEncoder = leftEncoder;
+  previousRightEncoder = rightEncoder;
+  while (leftEncoder - previousLeftEncoder < turnAngle || rightEncoder - previousRightEncoder > -turnAngle) {
+    Serial.print("Turning right");
+    Serial.println();
+     leftMotor.setSpeed(100);
+     leftMotor.forward();
+    rightMotor.setSpeed(100);
+    rightMotor.backward();
+  }
+   leftMotor.stop();
   rightMotor.stop();
-  delay(100);
-  leftMotor.reset();
-  leftMotor.runFor(rightTurnDelay, 0);
-  rightMotor.reset();
-  rightMotor.runFor(rightTurnDelay, 1);
-  delay(100);
+  // leftMotor.stop();
+  // rightMotor.stop();
+
+  // delay(250);
+  
+  // leftMotor.reset();
+  // leftMotor.setSpeed(turnSpeed);
+  // leftMotor.forward();
+  
+  // rightMotor.reset();
+  // rightMotor.setSpeed(turnSpeed);
+  // rightMotor.backward();
+
+  // delay(leftTurnDelay);
+  
+  // leftMotor.stop();
+  // rightMotor.stop();
+  
+  // delay(250);
+}
+
+void leftEncoderChange() {
+  if (digitalRead(4) == false) {
+    leftEncoder++;
+  }
+  else {
+    leftEncoder--;
+  }
+}
+
+void rightEncoderChange() {
+  if (digitalRead(5) == false) {
+    rightEncoder--;
+  }
+  else {
+    rightEncoder++;
+  }
 }
